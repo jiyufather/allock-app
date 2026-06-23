@@ -30,7 +30,8 @@ export default function LoginPage() {
     setError('')
     setSubmitting(true)
     try {
-      await signInWithEmailAndPassword(auth, toLoginEmail(id), password)
+      const loginEmail = id.includes('@') ? id.trim().toLowerCase() : toLoginEmail(id)
+      await signInWithEmailAndPassword(auth, loginEmail, password)
     } catch {
       setError('아이디 또는 비밀번호가 올바르지 않아요.')
     } finally {
