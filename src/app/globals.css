@@ -1,26 +1,49 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+@theme {
+  --color-pink-soft: #FFB3C6;
+  --color-pink-light: #FFE4EC;
+  --color-pink-dark: #FF8FAB;
+  --color-purple-soft: #C9B8FF;
+  --color-purple-light: #EDE9FF;
+  --color-purple-dark: #9B85FF;
+  --color-mint-soft: #B8F0E6;
+  --color-mint-light: #E0FAF4;
+  --color-mint-dark: #7DDFD0;
+  --color-peach-soft: #FFD5B8;
+  --color-peach-light: #FFF0E8;
+  --color-peach-dark: #FFB585;
+  --color-yellow-soft: #FFF4B8;
+  --color-cream: #FEFCF8;
+
+  --font-sans: 'Noto Sans KR', system-ui, sans-serif;
+
+  --radius-4xl: 2rem;
+  --radius-5xl: 2.5rem;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+:root {
+  --background: #faf8ff;
+  --foreground: #4a4063;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --background: #faf8ff;
+    --foreground: #4a4063;
   }
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: 'Noto Sans KR', system-ui, sans-serif;
 }
+
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* 스크롤바 숨김 (모바일 느낌) */
+.hide-scrollbar::-webkit-scrollbar { display: none; }
+.hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
