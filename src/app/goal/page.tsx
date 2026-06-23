@@ -35,6 +35,7 @@ export default function GoalPage() {
   const router = useRouter()
   const [saving, setSaving] = useState(false)
   const [savedMsg, setSavedMsg] = useState(false)
+  const [saveError, setSaveError] = useState('')
 
   const [gradeLevel, setGradeLevel] = useState<GradeLevel | ''>('')
   const [targetLine, setTargetLine] = useState<UniversityLine | ''>('')
@@ -117,15 +118,23 @@ export default function GoalPage() {
   async function handleSave() {
     if (!profile) return
     setSaving(true)
+    setSaveError('')
     try {
-      const toNum = (v: string) => { const n = parseInt(v); return isNaN(n) ? undefined : n }
+      const cleanGrades = (g: GradeMap) => {
+        const out: Record<string, number> = {}
+        for (const k of Object.keys(g)) {
+          const n = parseInt(g[k])
+          if (!isNaN(n)) out[k] = n
+        }
+        return out
+      }
       await updateUserTargetGoal(profile.uid, {
-        gradeLevel: gradeLevel || undefined,
-        targetLine: targetLine || undefined,
-        targetUniversity: targetUniversity.trim() || undefined,
+        ...(gradeLevel && { gradeLevel }),
+        ...(targetLine && { targetLine }),
+        ...(targetUniversity.trim() && { targetUniversity: targetUniversity.trim() }),
         grades: {
-          내신: { 국어: toNum(내신.국어), 수학: toNum(내신.수학), 영어: toNum(내신.영어), 탐구: toNum(내신.탐구) },
-          모의고사: { 국어: toNum(모의고사.국어), 수학: toNum(모의고사.수학), 영어: toNum(모의고사.영어), 탐구: toNum(모의고사.탐구) },
+          내신: cleanGrades(내신),
+          모의고사: cleanGrades(모의고사),
         },
         weeklySchedule: schedule,
         goal: { dailyMinutes, weeklyMinutes },
@@ -133,6 +142,8 @@ export default function GoalPage() {
       await refreshProfile()
       setSavedMsg(true)
       setTimeout(() => setSavedMsg(false), 2500)
+    } catch {
+      setSaveError('저장에 실패했어요. 잠시 후 다시 시도해주세요.')
     } finally {
       setSaving(false)
     }
@@ -529,6 +540,9 @@ export default function GoalPage() {
           <p className="text-center text-xs text-purple-dark font-bold">
             목표가 업데이트됐어요. 홈에서 달성 현황을 확인해봐요. 🎯
           </p>
+        )}
+        {saveError && (
+          <p className="text-center text-xs text-pink-dark font-bold">{saveError}</p>
         )}
       </div>
       <BottomNav />

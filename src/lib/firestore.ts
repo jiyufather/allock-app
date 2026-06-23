@@ -10,6 +10,7 @@ import {
 } from '@/types'
 import { getWeekFromDate } from './config'
 import { computeNetSubjects } from './deductions'
+import { scheduleToFirestore, scheduleFromFirestore } from './schedule'
 import {
   DEMO_STUDENTS, DEMO_PENDING, DEMO_LOGS, DEMO_ADMIN, DEMO_BRANCH_ADMIN,
   DEMO_PENDING_PLANS,
@@ -29,7 +30,12 @@ export async function getUserProfile(uid: string): Promise<UserProfile | null> {
     )
   }
   const snap = await getDoc(doc(db, 'users', uid))
-  return snap.exists() ? (snap.data() as UserProfile) : null
+  if (!snap.exists()) return null
+  const data = snap.data() as UserProfile
+  if (data.weeklySchedule) {
+    data.weeklySchedule = scheduleFromFirestore(data.weeklySchedule as unknown as Record<string, string[]>)
+  }
+  return data
 }
 
 export async function createUserProfile(uid: string, data: Omit<UserProfile, 'uid' | 'createdAt'>) {
@@ -56,7 +62,9 @@ export async function updateUserTargetGoal(
   updates: Partial<Pick<UserProfile, 'gradeLevel' | 'targetLine' | 'targetUniversity' | 'goal' | 'grades' | 'weeklySchedule'>>,
 ) {
   if (DEMO_MODE) return
-  await updateDoc(doc(db, 'users', uid), updates as Record<string, unknown>)
+  const payload: Record<string, unknown> = { ...updates }
+  if (updates.weeklySchedule) payload.weeklySchedule = scheduleToFirestore(updates.weeklySchedule)
+  await updateDoc(doc(db, 'users', uid), payload)
 }
 
 /** 학생 개별 썸머스쿨 기간 설정 */

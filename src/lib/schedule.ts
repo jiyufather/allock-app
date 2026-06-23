@@ -27,3 +27,14 @@ export function colorForActivity(value: string): string {
 export function emptySchedule(): string[][] {
   return Array.from({ length: HOUR_SLOTS.length }, () => Array(7).fill(''))
 }
+
+/** Firestore는 배열의 배열을 지원하지 않아 행 인덱스를 키로 하는 객체로 변환 */
+export function scheduleToFirestore(schedule: string[][]): Record<string, string[]> {
+  return Object.fromEntries(schedule.map((row, i) => [String(i), row]))
+}
+
+export function scheduleFromFirestore(data: Record<string, string[]> | undefined): string[][] {
+  const empty = emptySchedule()
+  if (!data) return empty
+  return empty.map((row, i) => data[String(i)] ?? row)
+}
