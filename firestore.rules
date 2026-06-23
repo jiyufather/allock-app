@@ -1,0 +1,79 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function myRole() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && myRole() in ['super_admin', 'branch_admin'];
+    }
+
+    function isSuperAdmin() {
+      return isSignedIn() && myRole() == 'super_admin';
+    }
+
+    // 사용자 프로필
+    match /users/{uid} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && request.auth.uid == uid && (
+                      request.resource.data.role == 'pending'
+                      || (
+                        request.resource.data.role == 'student'
+                        && request.resource.data.studentCode is string
+                        && get(/databases/$(database)/documents/studentCodes/$(request.resource.data.studentCode)).data.usedBy == request.auth.uid
+                        && get(/databases/$(database)/documents/studentCodes/$(request.resource.data.studentCode)).data.branchName == request.resource.data.school
+                      )
+                    );
+      allow update: if isSignedIn() && (
+                      (request.auth.uid == uid
+                        && request.resource.data.role == resource.data.role
+                        && request.resource.data.school == resource.data.school)
+                      || isAdmin()
+                    );
+      allow delete: if false;
+    }
+
+    // 학습 기록 (승인된 기록은 공개 리더보드용으로 비로그인도 열람 가능)
+    match /studyLogs/{logId} {
+      allow read: if resource.data.status == 'approved' || isSignedIn();
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid
+                    && request.resource.data.status == 'planned';
+      allow update: if isAdmin() || (
+                      isSignedIn()
+                      && resource.data.userId == request.auth.uid
+                      && resource.data.status == 'planned'
+                      && request.resource.data.userId == request.auth.uid
+                      && request.resource.data.status == 'planned'
+                    );
+      allow delete: if false;
+    }
+
+    // 학생코드 (가입 단계 검증은 비로그인 상태에서도 단일 코드 조회 필요)
+    match /studentCodes/{code} {
+      allow get: if true;
+      allow list: if isAdmin();
+      allow create, delete: if isSuperAdmin();
+      allow update: if isSuperAdmin()
+                    || (isSignedIn()
+                        && resource.data.usedBy == null
+                        && request.resource.data.usedBy == request.auth.uid
+                        && request.resource.data.code == resource.data.code
+                        && request.resource.data.branchName == resource.data.branchName);
+    }
+
+    // 락스터디 관리 (관리자 전용)
+    match /lockStudySchedules/{docId} {
+      allow read, write: if isAdmin();
+    }
+    match /lockStudySupervisors/{docId} {
+      allow read, write: if isAdmin();
+    }
+  }
+}
