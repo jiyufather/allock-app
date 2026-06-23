@@ -232,6 +232,13 @@ export function buildDemoPendingPlans(): StudyLog[] {
         수학: { contents: ['미적분 기초 개념 복습', '도함수 문제풀이'], plannedMinutes: 150 },
         탐구: { contents: ['개념 정리 2단원'], plannedMinutes: 90 },
       },
+      scheduleSlots: {
+        '09:00': '수학', '09:30': '수학', '10:00': '수학', '10:30': '수학', '11:00': '수학',
+        '11:30': '탐구', '12:00': '탐구', '12:30': '탐구',
+      },
+      deductions: [
+        { slot: '09:30', minutes: 5, reason: '졸음', by: '김에이T', at: `${today}T14:02:00.000Z` },
+      ],
       plannedTotalMinutes: 240, subjects: {}, totalMinutes: 0,
       status: 'planned', createdAt: `${today}T09:10:00.000Z`,
     },

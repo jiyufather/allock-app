@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
 import { submitStudyPlan, getLogForDate } from '@/lib/firestore'
-import { SUBJECTS, SUBJECT_COLORS, Subject, StudyLog, StudyPlan } from '@/types'
+import { SUBJECTS, SUBJECT_COLORS, Subject, StudyLog, StudyPlan, Deduction } from '@/types'
 import { toDateStr, formatMinutes, isWithinSummerSchool } from '@/lib/config'
 import BottomNav from '@/components/BottomNav'
 import LoadingScreen from '@/components/LoadingScreen'
@@ -50,6 +50,34 @@ function buildPlan(entries: StudyEntry[], tt: Timetable): Partial<Record<Subject
     }
   }
   return plan
+}
+
+/** entries + timetable → 시간 슬롯별 과목 배치 (시간대별 감점용) */
+function buildScheduleSlots(entries: StudyEntry[], tt: Timetable): Partial<Record<string, Subject>> {
+  const slots: Partial<Record<string, Subject>> = {}
+  for (const [time, entryId] of Object.entries(tt)) {
+    if (entryId == null) continue
+    const entry = entries.find(e => e.id === entryId)
+    if (entry) slots[time] = entry.subject
+  }
+  return slots
+}
+
+/** 감점 내역 읍기전용 표시 */
+function DeductionList({ deductions }: { deductions: Deduction[] }) {
+  if (deductions.length === 0) return null
+  return (
+    <div className="bg-white/60 rounded-2xl p-2.5 space-y-1">
+      <p className="text-xs font-bold text-pink-dark">감점 내역</p>
+      {deductions.map((d, i) => (
+        <div key={i} className="flex items-center gap-2 text-xs text-gray-500">
+          <span className="font-mono text-gray-400">{d.slot}</span>
+          <span>{d.reason}</span>
+          <span className="text-pink-dark font-bold ml-auto">-{d.minutes}분</span>
+        </div>
+      ))}
+    </div>
+  )
 }
 
 /** 기존 로그 → 편집 상태로 변환 */
@@ -190,7 +218,7 @@ export default function LogPage() {
     if (!profile || !isValid || !hasAnyPlan) return
     setSaving(true)
     try {
-      await submitStudyPlan(profile.uid, profile.name, profile.school, date, buildPlan(entries, timetable), mood, resolution.trim())
+      await submitStudyPlan(profile.uid, profile.name, profile.school, date, buildPlan(entries, timetable), buildScheduleSlots(entries, timetable), mood, resolution.trim())
       setSaved(true)
       setEditMode(false)
     } finally {
@@ -260,6 +288,7 @@ export default function LogPage() {
                 )
               })}
             </div>
+            <DeductionList deductions={existing.deductions ?? []} />
             <p className="text-sm font-black text-purple-dark text-right">총 {formatMinutes(existing.totalMinutes)}</p>
           </div>
         )}
@@ -307,6 +336,7 @@ export default function LogPage() {
                 )
               })}
             </div>
+            <DeductionList deductions={existing?.deductions ?? []} />
           </div>
         )}
 

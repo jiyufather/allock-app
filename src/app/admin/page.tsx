@@ -10,7 +10,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import {
   getAllStudents, getAllLogs,
   buildRankings, BranchRanking, StudentRanking,
-  getPendingApprovals, approveStudyLog,
+  getPendingApprovals, approveStudyLog, addDeduction,
   updateStudentSummerDates, bulkSetSummerDates,
   getStudentCodes, addStudentCode, deleteStudentCode, bulkAddStudentCodes, bulkDeleteStudentCodes,
   getLockStudySchedule, saveLockStudySchedule, getLockStudySupervisors, saveLockStudySupervisors,
@@ -20,6 +20,7 @@ import {
   LOCK_STUDY_DAYS, LOCK_STUDY_SLOTS, LOCK_STUDY_ACTIVITIES, LOCK_CUSTOM_ACTIVITIES,
   LOCK_ACT_COLORS, lockColorFor,
 } from '@/lib/lockStudy'
+import { DEDUCTION_REASONS, computeNetSubjects, slotRange } from '@/lib/deductions'
 import { BRANCHES } from '@/lib/branches'
 import { fromLoginEmail } from '@/lib/auth'
 import { UserProfile, StudyLog, SUBJECTS, Subject, SUBJECT_COLORS, GRADE_LEVEL_LABELS, StudentCode } from '@/types'
@@ -82,6 +83,11 @@ export default function AdminPage() {
   const [studyLoading, setStudyLoading] = useState(false)
   const [actualMins, setActualMins] = useState<Record<string, Record<Subject, string>>>({})
   const [approvingLog, setApprovingLog] = useState<string | null>(null)
+  const [selectedSlot, setSelectedSlot] = useState<Record<string, string | null>>({})
+  const [deductReason, setDeductReason] = useState<Record<string, string>>({})
+  const [deductCustom, setDeductCustom] = useState<Record<string, string>>({})
+  const [deductMinutes, setDeductMinutes] = useState<Record<string, string>>({})
+  const [addingDeduction, setAddingDeduction] = useState<string | null>(null)
 
   useEffect(() => {
     if (loading) return
@@ -172,13 +178,22 @@ export default function AdminPage() {
     return () => window.removeEventListener('pointerup', up)
   }, [])
 
+  function hasScheduleSlots(log: StudyLog) {
+    return !!log.scheduleSlots && Object.keys(log.scheduleSlots).length > 0
+  }
+
   async function approveLog(log: StudyLog) {
     setApprovingLog(log.id)
-    const mins = actualMins[log.id] ?? {}
-    const actual: Partial<Record<Subject, number>> = {}
-    for (const sub of SUBJECTS) {
-      const v = parseInt(mins[sub]) || 0
-      if (v > 0) actual[sub] = v
+    let actual: Partial<Record<Subject, number>>
+    if (hasScheduleSlots(log)) {
+      actual = computeNetSubjects(log.scheduleSlots, log.deductions)
+    } else {
+      const mins = actualMins[log.id] ?? {}
+      actual = {}
+      for (const sub of SUBJECTS) {
+        const v = parseInt(mins[sub]) || 0
+        if (v > 0) actual[sub] = v
+      }
     }
     await approveStudyLog(log.id, actual, profile!.name)
     // 데모 모드: 로컬 상태 낙관적 업데이트
@@ -186,6 +201,28 @@ export default function AdminPage() {
       l.id === log.id ? { ...l, status: 'approved', subjects: actual, totalMinutes: Object.values(actual).reduce((s, v) => s + (v ?? 0), 0), approvedBy: profile!.name } : l
     ))
     setApprovingLog(null)
+  }
+
+  async function handleAddDeduction(log: StudyLog) {
+    const slot = selectedSlot[log.id]
+    const minutes = parseInt(deductMinutes[log.id]) || 0
+    if (!slot || minutes <= 0) return
+    const reasonKey = deductReason[log.id] ?? DEDUCTION_REASONS[0]
+    const reason = reasonKey === '기타' ? (deductCustom[log.id]?.trim() || '기타') : reasonKey
+    const deduction = { slot, minutes, reason, by: profile!.name, at: new Date().toISOString() }
+    setAddingDeduction(log.id)
+    await addDeduction(log.id, deduction)
+    setStudyLogs(prev => prev.map(l => {
+      if (l.id !== log.id) return l
+      const deductions = [...(l.deductions ?? []), deduction]
+      const subjects = computeNetSubjects(l.scheduleSlots, deductions)
+      const totalMinutes = Object.values(subjects).reduce((s, v) => s + (v ?? 0), 0)
+      return { ...l, deductions, subjects: l.status === 'approved' ? subjects : l.subjects, totalMinutes: l.status === 'approved' ? totalMinutes : l.totalMinutes }
+    }))
+    setSelectedSlot(prev => ({ ...prev, [log.id]: null }))
+    setDeductMinutes(prev => ({ ...prev, [log.id]: '' }))
+    setDeductCustom(prev => ({ ...prev, [log.id]: '' }))
+    setAddingDeduction(null)
   }
 
   if (loading || !profile) return <LoadingScreen />
@@ -495,8 +532,116 @@ export default function AdminPage() {
                       </div>
                     )}
 
-                    {/* 승인 대기: 실제 시간 입력 */}
-                    {log.status === 'planned' && (
+                    {/* 시간대별 감점 (학생이 시간표를 짜서 제출한 로그만 지원) */}
+                    {hasScheduleSlots(log) && (
+                      <div className="bg-purple-light/20 border border-purple-light rounded-2xl p-3 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <p className="text-xs font-bold text-gray-500">시간표</p>
+                          <p className="text-xs text-gray-300">칸을 누르면 감점 입력</p>
+                        </div>
+                        <div className="space-y-0.5 max-h-56 overflow-y-auto">
+                          {slotRange(log.scheduleSlots).map(time => {
+                            const sub = log.scheduleSlots?.[time]
+                            if (!sub) {
+                              return (
+                                <div key={time} className="flex items-center gap-2 text-xs text-gray-300 py-1">
+                                  <span className="font-mono w-10 flex-none">{time}</span>
+                                  <span className="flex-1 border-b border-dashed border-gray-100" />
+                                </div>
+                              )
+                            }
+                            const slotDeductions = (log.deductions ?? []).filter(d => d.slot === time)
+                            const deductedMins = slotDeductions.reduce((s, d) => s + d.minutes, 0)
+                            const isSelected = selectedSlot[log.id] === time
+                            return (
+                              <button key={time} type="button"
+                                onClick={() => setSelectedSlot(prev => ({ ...prev, [log.id]: isSelected ? null : time }))}
+                                className="w-full flex items-center gap-2 text-xs py-1 rounded-lg transition-all"
+                                style={{ backgroundColor: isSelected ? '#EDE9FF' : 'transparent' }}>
+                                <span className="font-mono w-10 flex-none text-gray-400">{time}</span>
+                                <span className="flex-1 px-2 py-1 rounded-full text-white font-bold text-left truncate"
+                                  style={{ backgroundColor: SUBJECT_COLORS[sub] }}>
+                                  {sub}
+                                </span>
+                                {deductedMins > 0 && (
+                                  <span className="text-xs bg-pink-dark text-white px-2 py-0.5 rounded-full font-bold flex-none">
+                                    -{deductedMins}분
+                                  </span>
+                                )}
+                              </button>
+                            )
+                          })}
+                        </div>
+
+                        {selectedSlot[log.id] && (
+                          <div className="bg-pink-soft/10 border border-pink-soft/30 rounded-2xl p-3 space-y-2">
+                            <p className="text-xs font-bold text-pink-dark">감점 추가 — {selectedSlot[log.id]}</p>
+                            <div className="flex gap-1.5">
+                              {DEDUCTION_REASONS.map(r => (
+                                <button key={r} type="button"
+                                  onClick={() => setDeductReason(prev => ({ ...prev, [log.id]: r }))}
+                                  className="flex-1 text-xs font-bold py-1.5 rounded-full transition-all"
+                                  style={(deductReason[log.id] ?? DEDUCTION_REASONS[0]) === r
+                                    ? { backgroundColor: '#D4537E', color: '#fff' }
+                                    : { backgroundColor: '#fff', color: '#993556', border: '1px solid #F0C2D3' }}>
+                                  {r}
+                                </button>
+                              ))}
+                            </div>
+                            {(deductReason[log.id] ?? DEDUCTION_REASONS[0]) === '기타' && (
+                              <input value={deductCustom[log.id] ?? ''}
+                                onChange={e => setDeductCustom(prev => ({ ...prev, [log.id]: e.target.value }))}
+                                placeholder="사유 직접 입력" maxLength={20}
+                                className="w-full px-3 py-1.5 rounded-xl border border-pink-soft/30 bg-white text-xs focus:outline-none" />
+                            )}
+                            <div className="flex items-center gap-2">
+                              <input type="number" min="1" max="30" value={deductMinutes[log.id] ?? ''}
+                                onChange={e => setDeductMinutes(prev => ({ ...prev, [log.id]: e.target.value }))}
+                                placeholder="분"
+                                className="w-16 px-2 py-1.5 rounded-xl border border-pink-soft/30 bg-white text-xs text-center font-bold focus:outline-none" />
+                              <span className="text-xs text-pink-dark">분 감점</span>
+                              <button type="button" onClick={() => handleAddDeduction(log)}
+                                disabled={addingDeduction === log.id}
+                                className="ml-auto px-4 py-1.5 rounded-full text-xs font-bold text-white bg-pink-dark disabled:opacity-60">
+                                {addingDeduction === log.id ? '추가 중...' : '감점 추가'}
+                              </button>
+                            </div>
+                          </div>
+                        )}
+
+                        {(log.deductions ?? []).length > 0 && (
+                          <div className="space-y-1">
+                            <p className="text-xs font-bold text-gray-400">감점 이력</p>
+                            {(log.deductions ?? []).map((d, i) => (
+                              <div key={i} className="flex items-center gap-2 text-xs bg-gray-50 rounded-xl px-2.5 py-1.5">
+                                <span className="font-mono text-gray-400">{d.slot}</span>
+                                <span className="text-gray-600">{d.reason}</span>
+                                <span className="text-pink-dark font-bold">-{d.minutes}분</span>
+                                <span className="ml-auto text-gray-300">{d.by}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        <div className="flex items-center justify-between pt-1">
+                          <p className="text-xs text-gray-400">
+                            최종 인정 {formatMinutes(Object.values(computeNetSubjects(log.scheduleSlots, log.deductions)).reduce((s, v) => s + (v ?? 0), 0))}
+                          </p>
+                          {log.status === 'planned' && (
+                            <button
+                              onClick={() => approveLog(log)}
+                              disabled={approvingLog === log.id}
+                              className="px-4 py-2 rounded-2xl font-bold text-white bg-gradient-to-r from-purple-soft to-mint-soft text-sm hover:from-purple-dark hover:to-mint-dark transition-all disabled:opacity-60"
+                            >
+                              {approvingLog === log.id ? '승인 중...' : '✅ 승인'}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* 승인 대기: 실제 시간 입력 (시간표 데이터 없는 기존 로그용 폴백) */}
+                    {log.status === 'planned' && !hasScheduleSlots(log) && (
                       <div className="space-y-2">
                         <p className="text-xs font-bold text-gray-500">실제 순공시간 입력 (분)</p>
                         <div className="grid grid-cols-5 gap-2">

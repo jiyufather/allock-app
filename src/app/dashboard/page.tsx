@@ -629,6 +629,20 @@ export default function DashboardPage() {
                     })}
                   </div>
 
+                  {/* 감점 내역 */}
+                  {(selectedLog.deductions ?? []).length > 0 && (
+                    <div className="bg-gray-50 rounded-2xl p-3 space-y-1">
+                      <p className="text-xs font-bold text-pink-dark">감점 내역</p>
+                      {(selectedLog.deductions ?? []).map((d, i) => (
+                        <div key={i} className="flex items-center gap-2 text-xs text-gray-500">
+                          <span className="font-mono text-gray-400">{d.slot}</span>
+                          <span>{d.reason}</span>
+                          <span className="text-pink-dark font-bold ml-auto">-{d.minutes}분</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
                   {/* 총 시간 */}
                   <div className="flex justify-between pt-2 border-t border-gray-100 text-xs">
                     <span className="text-gray-400">

@@ -52,6 +52,14 @@ export interface StudyPlan {
   plannedMinutes: number
 }
 
+export interface Deduction {
+  slot: string      // 감점 대상 시간 슬롯 (예: "09:30")
+  minutes: number
+  reason: string
+  by: string         // 처리한 관리자 이름
+  at: string         // ISO 시각
+}
+
 export interface StudyLog {
   id: string
   userId: string
@@ -60,6 +68,8 @@ export interface StudyLog {
   date: string
   week: number
   plan: Partial<Record<Subject, StudyPlan>>
+  scheduleSlots?: Partial<Record<string, Subject>>  // 시간 슬롯 → 과목 (시간대별 감점용)
+  deductions?: Deduction[]
   plannedTotalMinutes: number
   subjects: Partial<Record<Subject, number>>
   totalMinutes: number

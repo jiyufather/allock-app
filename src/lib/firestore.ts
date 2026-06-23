@@ -6,9 +6,10 @@ import {
 import { db } from './firebase'
 import {
   UserProfile, UserRole, StudyLog, StudyPlan, Goal, SUBJECTS, Subject, StudentCode,
-  LockStudyDaySchedule, LockStudySupervisors,
+  LockStudyDaySchedule, LockStudySupervisors, Deduction,
 } from '@/types'
 import { getWeekFromDate } from './config'
+import { computeNetSubjects } from './deductions'
 import {
   DEMO_STUDENTS, DEMO_PENDING, DEMO_LOGS, DEMO_ADMIN, DEMO_BRANCH_ADMIN,
   DEMO_PENDING_PLANS,
@@ -102,6 +103,7 @@ export async function submitStudyPlan(
   userSchool: string,
   date: string,
   plan: Partial<Record<Subject, StudyPlan>>,
+  scheduleSlots: Partial<Record<string, Subject>>,
   mood?: string,
   resolution?: string,
 ) {
@@ -116,6 +118,8 @@ export async function submitStudyPlan(
     date,
     week: getWeekFromDate(date),
     plan,
+    scheduleSlots,
+    deductions: [],
     plannedTotalMinutes,
     subjects: {},
     totalMinutes: 0,
@@ -142,6 +146,18 @@ export async function approveStudyLog(
     approvedBy: approvedByName,
     approvedAt: new Date().toISOString(),
   })
+}
+
+export async function addDeduction(logId: string, deduction: Deduction) {
+  if (DEMO_MODE) return
+  const ref = doc(db, 'studyLogs', logId)
+  const snap = await getDoc(ref)
+  if (!snap.exists()) return
+  const log = snap.data() as StudyLog
+  const deductions = [...(log.deductions ?? []), deduction]
+  const subjects = computeNetSubjects(log.scheduleSlots, deductions)
+  const totalMinutes = Object.values(subjects).reduce((s, v) => s + (v ?? 0), 0)
+  await updateDoc(ref, { deductions, subjects, totalMinutes })
 }
 
 export async function getPendingApprovals(date: string, school?: string): Promise<StudyLog[]> {
