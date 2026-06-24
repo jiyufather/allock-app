@@ -97,20 +97,27 @@ export default function RegisterPage() {
       const cred = await createUserWithEmailAndPassword(auth, loginEmail, form.password)
       const studentCode = form.studentCode.trim().toUpperCase()
       await markCodeUsed(studentCode, cred.user.uid)
-      const toNum = (v: string) => v ? parseFloat(v) : undefined
+      const cleanGrades = (g: { 국어: string; 수학: string; 영어: string; 탐구: string }) => {
+        const out: Record<string, number> = {}
+        for (const [k, v] of Object.entries(g)) {
+          const n = parseFloat(v)
+          if (!isNaN(n)) out[k] = n
+        }
+        return out
+      }
       await createUserProfile(cred.user.uid, {
         email: loginEmail,
         name: form.name,
         school: form.school,
         role: 'student',
         studentCode,
-        gradeLevel: form.gradeLevel || undefined,
-        targetLine: form.targetLine || undefined,
-        targetUniversity: form.targetUniversity || undefined,
+        ...(form.gradeLevel && { gradeLevel: form.gradeLevel }),
+        ...(form.targetLine && { targetLine: form.targetLine }),
+        ...(form.targetUniversity.trim() && { targetUniversity: form.targetUniversity.trim() }),
         goal: { dailyMinutes: form.dailyMinutes, weeklyMinutes: form.weeklyMinutes },
         grades: {
-          내신: { 국어: toNum(form.grades.내신.국어), 수학: toNum(form.grades.내신.수학), 영어: toNum(form.grades.내신.영어), 탐구: toNum(form.grades.내신.탐구) },
-          모의고사: { 국어: toNum(form.grades.모의고사.국어), 수학: toNum(form.grades.모의고사.수학), 영어: toNum(form.grades.모의고사.영어), 탐구: toNum(form.grades.모의고사.탐구) },
+          내신: cleanGrades(form.grades.내신),
+          모의고사: cleanGrades(form.grades.모의고사),
         },
       })
       router.replace('/dashboard')

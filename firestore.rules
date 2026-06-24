@@ -8,7 +8,9 @@ service cloud.firestore {
     }
 
     function myRole() {
-      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+      return exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role
+        : null;
     }
 
     function isAdmin() {
@@ -62,7 +64,7 @@ service cloud.firestore {
       allow create, delete: if isSuperAdmin();
       allow update: if isSuperAdmin()
                     || (isSignedIn()
-                        && resource.data.usedBy == null
+                        && resource.data.get('usedBy', null) == null
                         && request.resource.data.usedBy == request.auth.uid
                         && request.resource.data.code == resource.data.code
                         && request.resource.data.branchName == resource.data.branchName);
