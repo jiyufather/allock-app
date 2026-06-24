@@ -290,23 +290,23 @@ export default function DashboardPage() {
           <div className="hidden lg:block w-px h-8 bg-gray-100 flex-none" />
 
           {/* 나의 목표 */}
-          <div className="flex items-center gap-4 flex-1 min-w-0">
-            <div className="bg-purple-light/40 rounded-2xl px-3 py-2 flex-none">
+          <div className="flex items-center gap-3 w-full lg:w-auto lg:flex-1 min-w-0">
+            <div className="bg-purple-light/40 rounded-2xl px-3 py-2 flex-1 lg:flex-none min-w-0">
               <p className="text-xs text-gray-400 mb-0.5">나의 목표</p>
-              <p className="font-black text-purple-dark text-sm">
+              <p className="font-black text-purple-dark text-sm truncate">
                 🎯 {profile.targetUniversity ?? profile.targetLine ?? '미설정'}
               </p>
               {profile.targetLine && profile.targetUniversity && (
-                <p className="text-xs text-purple-dark/60">{profile.targetLine}</p>
+                <p className="text-xs text-purple-dark/60 truncate">{profile.targetLine}</p>
               )}
             </div>
             <div className="text-center flex-none">
               <p className="text-xs text-gray-400">하루 목표</p>
-              <p className="text-2xl font-black text-purple-dark">{formatH(goal.dailyMinutes)}</p>
+              <p className="text-xl lg:text-2xl font-black text-purple-dark">{formatH(goal.dailyMinutes)}</p>
             </div>
             <div className="text-center flex-none">
               <p className="text-xs text-gray-400">주간 목표</p>
-              <p className="text-2xl font-black text-purple-dark">{formatH(goal.weeklyMinutes)}</p>
+              <p className="text-xl lg:text-2xl font-black text-purple-dark">{formatH(goal.weeklyMinutes)}</p>
             </div>
           </div>
 

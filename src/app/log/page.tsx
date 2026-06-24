@@ -63,7 +63,7 @@ function buildScheduleSlots(entries: StudyEntry[], tt: Timetable): Partial<Recor
   return slots
 }
 
-/** 감점 내역 읍기전용 표시 */
+/** 감점 내역 읽기전용 표시 */
 function DeductionList({ deductions }: { deductions: Deduction[] }) {
   if (deductions.length === 0) return null
   return (
@@ -371,11 +371,11 @@ export default function LogPage() {
               </div>
             </div>
 
-            {/* 좌우 분할 패널 */}
-            <div className="flex gap-2 h-[460px] lg:h-[600px]">
+            {/* 좌우 분할 패널 (모바일: 위아래로 쌓임) */}
+            <div className="flex flex-col lg:flex-row gap-2 lg:h-[600px]">
 
               {/* ──────── 왼쪽: 할 일 목록 ──────── */}
-              <div className="flex flex-col gap-2 w-[44%]">
+              <div className="flex flex-col gap-2 w-full lg:w-[44%] h-[260px] lg:h-auto">
 
                 {/* 추가 폼 */}
                 <div className="bg-white/90 rounded-2xl p-3 shadow-md shadow-purple-100/20 border border-purple-50 space-y-2.5 flex-none">
@@ -454,7 +454,7 @@ export default function LogPage() {
               </div>
 
               {/* ──────── 오른쪽: 시간표 ──────── */}
-              <div className="flex flex-col flex-1 bg-white/80 backdrop-blur-sm rounded-3xl shadow-lg shadow-purple-100/20 border border-purple-50 overflow-hidden">
+              <div className="flex flex-col w-full lg:flex-1 h-[340px] lg:h-auto bg-white/80 backdrop-blur-sm rounded-3xl shadow-lg shadow-purple-100/20 border border-purple-50 overflow-hidden">
                 <div className="px-3 py-2 border-b border-gray-100 flex-none">
                   <p className="text-xs font-bold text-gray-500">⏰ 시간표</p>
                   <p className="text-xs text-gray-300 mt-0.5">
