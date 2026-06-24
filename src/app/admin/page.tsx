@@ -52,6 +52,8 @@ export default function AdminPage() {
   const [codesLoading, setCodesLoading] = useState(false)
   const [resettingUid, setResettingUid] = useState<string | null>(null)
   const [resetSentUid, setResetSentUid] = useState<string | null>(null)
+  const [resetResult, setResetResult] = useState<{ name: string; password: string } | null>(null)
+  const [copiedPw, setCopiedPw] = useState(false)
   const [codeSearch, setCodeSearch] = useState('')
   const [codeBranchFilter, setCodeBranchFilter] = useState('')
   const [selectedCodes, setSelectedCodes] = useState<Set<string>>(new Set())
@@ -278,7 +280,7 @@ export default function AdminPage() {
     setDeletingCode(null)
   }
 
-  async function sendPasswordReset(uid: string) {
+  async function sendPasswordReset(uid: string, name: string) {
     if (!confirm('이 학생의 비밀번호를 새로 초기화할까요?')) return
     setResettingUid(uid)
     try {
@@ -292,11 +294,23 @@ export default function AdminPage() {
       if (!res.ok) throw new Error(data.error ?? '초기화에 실패했어요.')
       setResetSentUid(uid)
       setTimeout(() => setResetSentUid(null), 3000)
-      alert(`새 비밀번호: ${data.password}\n학생에게 전달해주세요.`)
+      setCopiedPw(false)
+      setResetResult({ name, password: data.password })
     } catch (err) {
       alert(err instanceof Error ? err.message : '초기화에 실패했어요.')
     } finally {
       setResettingUid(null)
+    }
+  }
+
+  async function copyResetPassword() {
+    if (!resetResult) return
+    try {
+      await navigator.clipboard.writeText(resetResult.password)
+      setCopiedPw(true)
+      setTimeout(() => setCopiedPw(false), 2000)
+    } catch {
+      // 클립보드 권한이 없으면 무시 — 입력칸이 선택 가능해서 수동 복사 가능
     }
   }
 
@@ -1137,7 +1151,7 @@ export default function AdminPage() {
                                 </td>
                                 <td className="px-3 py-2.5">
                                   <button
-                                    onClick={() => sendPasswordReset(u.uid)}
+                                    onClick={() => sendPasswordReset(u.uid, u.name)}
                                     disabled={resettingUid === u.uid}
                                     title="비밀번호 즉시 초기화"
                                     className="text-xs bg-purple-light text-purple-dark px-2.5 py-1 rounded-full font-bold hover:bg-purple-soft/30 transition-all disabled:opacity-50 whitespace-nowrap">
@@ -1320,6 +1334,31 @@ export default function AdminPage() {
         )}
       </div>
       </div>
+
+      {resetResult && (
+        <div className="fixed inset-0 z-50 bg-black/30 flex items-center justify-center px-6"
+          onClick={() => setResetResult(null)}>
+          <div className="bg-white rounded-3xl p-6 w-full max-w-sm shadow-xl space-y-4" onClick={e => e.stopPropagation()}>
+            <div className="text-center space-y-1">
+              <div className="text-3xl">🔑</div>
+              <p className="text-sm font-bold text-gray-700">{resetResult.name} 학생의 새 비밀번호</p>
+              <p className="text-xs text-gray-400">학생에게 전달해주세요</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <input readOnly value={resetResult.password} onFocus={e => e.target.select()}
+                className="flex-1 px-4 py-3 rounded-2xl border-2 border-purple-light bg-purple-light/30 text-center font-mono text-lg font-bold text-purple-dark tracking-wider focus:outline-none" />
+              <button onClick={copyResetPassword}
+                className="px-4 py-3 rounded-2xl font-bold text-white bg-gradient-to-r from-purple-soft to-pink-soft hover:from-purple-dark hover:to-pink-dark transition-all flex-none text-sm">
+                {copiedPw ? '✅' : '복사'}
+              </button>
+            </div>
+            <button onClick={() => setResetResult(null)}
+              className="w-full py-3 rounded-2xl font-bold text-gray-500 bg-gray-100 hover:bg-gray-200 transition-all text-sm">
+              닫기
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
