@@ -150,6 +150,7 @@ export default function DashboardPage() {
       for (let i = 0; i < 30; i++) {
         const d = new Date()
         d.setDate(d.getDate() - i)
+        if (d.getDay() === 0) continue // 일요일은 휴식일 — streak를 끊지 않음
         if (dateSet.has(toDateStr(d))) s++
         else break
       }
