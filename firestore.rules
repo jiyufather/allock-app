@@ -70,6 +70,12 @@ service cloud.firestore {
                         && request.resource.data.branchName == resource.data.branchName);
     }
 
+    // 랭킹 캐시 (매일 00시 cron이 Admin SDK로만 기록, 클라이언트는 읅기만)
+    match /rankings/{docId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
     // 락스터디 관리 (관리자 전용)
     match /lockStudySchedules/{docId} {
       allow read, write: if isAdmin();

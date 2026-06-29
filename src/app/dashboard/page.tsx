@@ -7,7 +7,7 @@ import Link from 'next/link'
 import { signOut, updatePassword, reauthenticateWithCredential, EmailAuthProvider } from 'firebase/auth'
 import { auth } from '@/lib/firebase'
 import { useAuth } from '@/contexts/AuthContext'
-import { getMyLogs, getAllLogs, getAllStudents, buildRankings, getLogForDate } from '@/lib/firestore'
+import { getMyLogs, getCachedRankings, getLogForDate } from '@/lib/firestore'
 import { StudyLog, SUBJECT_COLORS, Subject, SUBJECTS } from '@/types'
 import { formatMinutes, toDateStr, getWeekFromDate, getEffectiveSummerDates } from '@/lib/config'
 import { getGuideMinutes, getMotivationMessage } from '@/lib/studyGuide'
@@ -90,6 +90,7 @@ export default function DashboardPage() {
 
   const [myLogs, setMyLogs] = useState<StudyLog[]>([])
   const [myRank, setMyRank] = useState<number | null>(null)
+  const [rankUpdatedAt, setRankUpdatedAt] = useState<string | null>(null)
   const [streak, setStreak] = useState(0)
   const [dataLoading, setDataLoading] = useState(true)
 
@@ -126,10 +127,9 @@ export default function DashboardPage() {
 
     async function load() {
       const uid = profile!.uid
-      const [logs, allLogs, allUsers, todayEntry] = await Promise.all([
+      const [logs, cachedRanking, todayEntry] = await Promise.all([
         getMyLogs(uid),
-        getAllLogs(),
-        getAllStudents(),
+        getCachedRankings(),
         getLogForDate(uid, today),
       ])
       const approvedLogs = logs.filter(l => l.status === 'approved')
@@ -141,9 +141,9 @@ export default function DashboardPage() {
       if (todayEntry) logCache.current[today] = todayEntry
       setSelectedLog(logCache.current[today] ?? null)
 
-      const { studentRanking } = buildRankings(allLogs, allUsers)
-      const me = studentRanking.find(s => s.uid === uid)
+      const me = cachedRanking?.studentRanking.find(s => s.uid === uid)
       setMyRank(me?.rank ?? null)
+      setRankUpdatedAt(cachedRanking?.updatedAt ?? null)
 
       const dateSet = new Set(approvedLogs.map(l => l.date))
       let s = 0
@@ -281,9 +281,9 @@ export default function DashboardPage() {
               <p className="font-black text-orange-400 text-sm">🔥 {streak}일</p>
               <p className="text-xs text-gray-400">연속 승인 중</p>
             </div>
-            <div className="text-center">
+            <div className="text-center" title="매일 00시에 업데이트돼요">
               <p className="font-black text-purple-dark text-sm">🏆 {myRank ? `${myRank}위` : '-'}</p>
-              <p className="text-xs text-gray-400">전국 순위</p>
+              <p className="text-xs text-gray-400">전국 순위*</p>
             </div>
           </div>
 
@@ -320,6 +320,11 @@ export default function DashboardPage() {
             로그아웃
           </button>
         </div>
+
+        <p className="text-xs text-gray-300 px-1">
+          * 전국 순위는 매일 00시에 업데이트돼요
+          {rankUpdatedAt && ` (마지막 업데이트 ${rankUpdatedAt.slice(5, 10).replace('-', '/')} ${rankUpdatedAt.slice(11, 16)})`}
+        </p>
 
         {/* ── 2컬럼 메인 ── */}
         <div className="lg:grid lg:grid-cols-[1.1fr_1fr] lg:gap-6 space-y-5 lg:space-y-0">

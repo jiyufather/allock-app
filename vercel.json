@@ -1,0 +1,5 @@
+{
+  "crons": [
+    { "path": "/api/cron/rebuild-rankings", "schedule": "0 15 * * *" }
+  ]
+}

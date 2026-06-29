@@ -4,7 +4,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
-import { getAllLogs, getAllStudents, buildRankings, StudentRanking } from '@/lib/firestore'
+import { getCachedRankings, StudentRanking } from '@/lib/firestore'
 import { formatMinutes } from '@/lib/config'
 import BottomNav from '@/components/BottomNav'
 import LoadingScreen from '@/components/LoadingScreen'
@@ -24,6 +24,7 @@ export default function RankingPage() {
   const { user, profile, loading, demoMode } = useAuth()
   const router = useRouter()
   const [studentRanking, setStudentRanking] = useState<StudentRanking[]>([])
+  const [updatedAt, setUpdatedAt] = useState<string | null>(null)
   const [dataLoading, setDataLoading] = useState(true)
 
   useEffect(() => {
@@ -36,15 +37,16 @@ export default function RankingPage() {
   useEffect(() => {
     if (!profile || (!demoMode && !user)) return
     async function load() {
-      const [allLogs, allUsers] = await Promise.all([getAllLogs(), getAllStudents()])
-      const { studentRanking } = buildRankings(allLogs, allUsers)
-      setStudentRanking(studentRanking.slice(0, 10))
+      const cached = await getCachedRankings()
+      setStudentRanking(cached?.studentRanking ?? [])
+      setUpdatedAt(cached?.updatedAt ?? null)
       setDataLoading(false)
     }
     load()
   }, [user, profile, demoMode])
 
   const myRank = studentRanking.find(s => s.uid === user?.uid)
+  const top10 = studentRanking.slice(0, 10)
 
   if (loading || !profile) return <LoadingScreen />
 
@@ -55,6 +57,10 @@ export default function RankingPage() {
         <div>
           <h1 className="text-xl font-black text-purple-dark">🏆 전국 TOP 10</h1>
           <p className="text-sm text-gray-400 mt-1">누적 순공시간 기준 전국 순위예요</p>
+          <p className="text-xs text-gray-300 mt-1">
+            * 매일 00시에 업데이트돼요
+            {updatedAt && ` (마지막 업데이트 ${updatedAt.slice(5, 10).replace('-', '/')} ${updatedAt.slice(11, 16)})`}
+          </p>
         </div>
 
         {dataLoading ? (
@@ -81,10 +87,10 @@ export default function RankingPage() {
               </div>
             )}
 
-            {studentRanking.length === 0 ? (
+            {top10.length === 0 ? (
               <div className="text-center py-12 text-gray-300 text-sm">아직 데이터가 없어요</div>
             ) : (
-              studentRanking.map(s => {
+              top10.map(s => {
                 const isMe = s.uid === user?.uid
                 return (
                   <div key={s.uid}

@@ -216,60 +216,19 @@ export async function getAllLogs(school?: string): Promise<StudyLog[]> {
 }
 
 // ─── 랭킹 ────────────────────────────────────────────────────────
+// 계산 로직 자체는 Firebase 의존성 없는 lib/rankings.ts로 분리됨 (서버 cron에서도 재사용)
+export { buildRankings, type StudentRanking, type BranchRanking, type CachedRankings } from './rankings'
+import { CachedRankings } from './rankings'
 
-export interface StudentRanking {
-  uid: string
-  name: string
-  school: string
-  totalMinutes: number
-  rank: number
-}
-
-export interface BranchRanking {
-  school: string
-  totalMinutes: number
-  studentCount: number
-  avgMinutes: number
-  rank: number
-}
-
-export function buildRankings(logs: StudyLog[], users: UserProfile[]) {
-  const approvedLogs = logs.filter(l => l.status === 'approved')
-
-  const userTotals: Record<string, { name: string; school: string; total: number }> = {}
-  for (const log of approvedLogs) {
-    if (!userTotals[log.userId]) {
-      userTotals[log.userId] = { name: log.userName, school: log.userSchool, total: 0 }
-    }
-    userTotals[log.userId].total += log.totalMinutes
+/** 매일 00시 cron이 미리 계산해둔 랭킹 캐시 — 학생용 화면은 이걸 읽어서 전체 컬렉션 스캔을 피함 */
+export async function getCachedRankings(): Promise<CachedRankings | null> {
+  if (DEMO_MODE) {
+    const { buildRankings } = await import('./rankings')
+    const { studentRanking, branchRanking } = buildRankings(DEMO_LOGS, DEMO_STUDENTS)
+    return { studentRanking, branchRanking, updatedAt: new Date().toISOString() }
   }
-
-  const studentRanking: StudentRanking[] = Object.entries(userTotals)
-    .map(([uid, v]) => ({ uid, name: v.name, school: v.school, totalMinutes: v.total, rank: 0 }))
-    .sort((a, b) => b.totalMinutes - a.totalMinutes)
-    .map((s, i) => ({ ...s, rank: i + 1 }))
-
-  const branchTotals: Record<string, { total: number; count: number }> = {}
-  for (const user of users) {
-    if (user.role !== 'student') continue
-    if (!branchTotals[user.school]) branchTotals[user.school] = { total: 0, count: 0 }
-    branchTotals[user.school].count++
-    const userLogs = approvedLogs.filter(l => l.userId === user.uid)
-    branchTotals[user.school].total += userLogs.reduce((s, l) => s + l.totalMinutes, 0)
-  }
-
-  const branchRanking: BranchRanking[] = Object.entries(branchTotals)
-    .map(([school, v]) => ({
-      school,
-      totalMinutes: v.total,
-      studentCount: v.count,
-      avgMinutes: v.count > 0 ? Math.round(v.total / v.count) : 0,
-      rank: 0,
-    }))
-    .sort((a, b) => b.avgMinutes - a.avgMinutes)
-    .map((b, i) => ({ ...b, rank: i + 1 }))
-
-  return { studentRanking, branchRanking }
+  const snap = await getDoc(doc(db, 'rankings', 'latest'))
+  return snap.exists() ? (snap.data() as CachedRankings) : null
 }
 
 // ─── 공개 리더보드 ────────────────────────────────────────────────
