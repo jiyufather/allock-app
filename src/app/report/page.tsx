@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
 import { getStudentReport, StudentReport, WeeklyReport } from '@/lib/firestore'
-import { formatMinutes, SUMMER_START } from '@/lib/config'
+import { formatMinutes, SUMMER_START, getWeekFromDate, toDateStr } from '@/lib/config'
 import { SUBJECTS, SUBJECT_COLORS, Subject, UserProfile } from '@/types'
 import { exportStudentReportXlsx } from '@/lib/exportExcel'
 import BottomNav from '@/components/BottomNav'
@@ -128,7 +128,10 @@ export default function MyReportPage() {
     if (!profile || (!demoMode && !user)) return
     getStudentReport(profile.uid).then(r => {
       setReport(r)
-      if (r && r.weeks.length > 0) setSelectedWeek(r.weeks[r.weeks.length - 1].week)
+      if (r && r.weeks.length > 0) {
+        const currentWeek = getWeekFromDate(toDateStr(new Date()), profile)
+        setSelectedWeek(Math.min(Math.max(currentWeek, 1), r.weeks.length))
+      }
       setDataLoading(false)
     })
   }, [user, profile, demoMode])
