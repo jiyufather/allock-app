@@ -1,13 +1,15 @@
 // 올락 썸머스쿨 기간 및 공통 설정
-export const SUMMER_START = process.env.NEXT_PUBLIC_SUMMER_START ?? '2026-05-22'
+export const SUMMER_START = process.env.NEXT_PUBLIC_SUMMER_START ?? '2026-07-13'
+export const SUMMER_END = process.env.NEXT_PUBLIC_SUMMER_END ?? '2026-08-12'
 export const TOTAL_WEEKS = 4
 
 type SummerProfile = { summerStart?: string; summerEnd?: string }
 
 /** 학생 프로필 기준 실제 시작/종료일 반환 (미설정 시 전역 기본값) */
 export function getEffectiveSummerDates(profile?: SummerProfile): { start: string; end: string } {
-  const start = profile?.summerStart ?? SUMMER_START
-  if (profile?.summerEnd) return { start, end: profile.summerEnd }
+  if (!profile?.summerStart) return { start: SUMMER_START, end: profile?.summerEnd ?? SUMMER_END }
+  const start = profile.summerStart
+  if (profile.summerEnd) return { start, end: profile.summerEnd }
   const end = new Date(start)
   end.setDate(end.getDate() + TOTAL_WEEKS * 7)
   return { start, end: toDateStr(end) }

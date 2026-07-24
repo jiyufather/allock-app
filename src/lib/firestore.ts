@@ -1,6 +1,6 @@
 // Firestore CRUD 유틸리티
 import {
-  doc, getDoc, setDoc, updateDoc, deleteDoc, collection,
+  doc, getDoc, setDoc, updateDoc, deleteDoc, deleteField, collection,
   query, where, getDocs, orderBy,
 } from 'firebase/firestore'
 import { db } from './firebase'
@@ -153,6 +153,17 @@ export async function approveStudyLog(
     status: 'approved',
     approvedBy: approvedByName,
     approvedAt: new Date().toISOString(),
+  })
+}
+
+export async function cancelApproval(logId: string) {
+  if (DEMO_MODE) return
+  await updateDoc(doc(db, 'studyLogs', logId), {
+    status: 'planned',
+    subjects: {},
+    totalMinutes: 0,
+    approvedBy: deleteField(),
+    approvedAt: deleteField(),
   })
 }
 

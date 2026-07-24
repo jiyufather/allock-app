@@ -10,7 +10,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import {
   getAllStudents, getAllLogs,
   buildRankings, BranchRanking, StudentRanking,
-  getPendingApprovals, approveStudyLog, addDeduction,
+  getPendingApprovals, approveStudyLog, cancelApproval, addDeduction,
   updateStudentSummerDates, bulkSetSummerDates,
   getStudentCodes, addStudentCode, deleteStudentCode, bulkAddStudentCodes, bulkDeleteStudentCodes,
   getLockStudySchedule, saveLockStudySchedule, getLockStudySupervisors, saveLockStudySupervisors,
@@ -85,6 +85,7 @@ export default function AdminPage() {
   const [studyLoading, setStudyLoading] = useState(false)
   const [actualMins, setActualMins] = useState<Record<string, Record<Subject, string>>>({})
   const [approvingLog, setApprovingLog] = useState<string | null>(null)
+  const [cancelingLog, setCancelingLog] = useState<string | null>(null)
   const [selectedSlot, setSelectedSlot] = useState<Record<string, string | null>>({})
   const [deductReason, setDeductReason] = useState<Record<string, string>>({})
   const [deductCustom, setDeductCustom] = useState<Record<string, string>>({})
@@ -203,6 +204,16 @@ export default function AdminPage() {
       l.id === log.id ? { ...l, status: 'approved', subjects: actual, totalMinutes: Object.values(actual).reduce((s, v) => s + (v ?? 0), 0), approvedBy: profile!.name } : l
     ))
     setApprovingLog(null)
+  }
+
+  async function cancelLog(log: StudyLog) {
+    if (!confirm('승인을 취소할까요? 학생의 순공시간·랭킹·리포트에서 즉시 제외됩니다.')) return
+    setCancelingLog(log.id)
+    await cancelApproval(log.id)
+    setStudyLogs(prev => prev.map(l =>
+      l.id === log.id ? { ...l, status: 'planned', subjects: {}, totalMinutes: 0, approvedBy: undefined } : l
+    ))
+    setCancelingLog(null)
   }
 
   async function handleAddDeduction(log: StudyLog) {
@@ -543,6 +554,15 @@ export default function AdminPage() {
                           })}
                         </div>
                         <p className="text-xs font-black text-mint-dark text-right">총 {formatMinutes(log.totalMinutes)}</p>
+                        <div className="flex justify-end pt-1">
+                          <button
+                            onClick={() => cancelLog(log)}
+                            disabled={cancelingLog === log.id}
+                            className="px-3 py-1.5 rounded-2xl font-bold text-pink-dark bg-white/80 text-xs hover:bg-pink-light/50 transition-all disabled:opacity-60"
+                          >
+                            {cancelingLog === log.id ? '취소 중...' : '↩ 승인 취소'}
+                          </button>
+                        </div>
                       </div>
                     )}
 
