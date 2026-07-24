@@ -7,6 +7,7 @@ import { usePathname } from 'next/navigation'
 const items = [
   { href: '/dashboard', label: '홈', icon: '🏠' },
   { href: '/log', label: '플래너 입력', icon: '✏️' },
+  { href: '/timer', label: '스터디타이머', icon: '⏱️' },
   { href: '/goal', label: '목표 입력', icon: '🎯' },
   { href: '/ranking', label: '랭킹', icon: '🏆' },
   { href: '/report', label: '리포트', icon: '📋' },
