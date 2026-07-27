@@ -40,14 +40,16 @@ export default function TimerPage() {
   const [awayNotice, setAwayNotice] = useState<string | null>(null)
   const [motionSupported, setMotionSupported] = useState(false)
   const [motionPermission, setMotionPermission] = useState<'unknown' | 'granted' | 'denied' | 'unnecessary'>('unknown')
-  const [faceDown, setFaceDown] = useState(true)
+  const [faceDown, setFaceDown] = useState(false)
   const [motionActive, setMotionActive] = useState(false) // 실제 센서 데이터를 한 번이라도 받았는지 (PC는 API만 있고 데이터가 안 옴)
+  const [started, setStarted] = useState(false) // "타이머 시작하기" 눌러야 카운트 시작 (그 전엔 이탈 감지도 안 함)
 
   const slotKeyRef = useRef<string>(slotKeyAt(new Date()))
   const tabVisibleRef = useRef(true)
-  const faceDownRef = useRef(true)
+  const faceDownRef = useRef(false)
   const motionActiveRef = useRef(false)
   const focusedRef = useRef(true)
+  const startedRef = useRef(false)
   const unfocusedAtRef = useRef<number | null>(null)
   const unfocusedSlotRef = useRef<string | null>(null)
   const logRef = useRef<StudyLog | null>(null)
@@ -83,13 +85,14 @@ export default function TimerPage() {
       setSlotElapsedSec(0)
       return
     }
-    if (focusedRef.current) {
+    if (startedRef.current && focusedRef.current) {
       setSlotElapsedSec(s => s + 1)
     }
   }, [now])
 
   // 집중 이탈/복귀 공통 처리 (탭 전환, 뒤집기 둘 다 여기로 모임)
   function handleFocusChange(focused: boolean) {
+    if (!startedRef.current) return
     if (focused === focusedRef.current) return
     focusedRef.current = focused
 
@@ -146,24 +149,24 @@ export default function TimerPage() {
     const needsPermission = hasMotion && typeof (DeviceMotionEvent as unknown as MotionPermissionAPI).requestPermission === 'function'
     if (!needsPermission) setMotionPermission('unnecessary')
 
-    function onMotion(e: DeviceMotionEvent) {
-      const z = e.accelerationIncludingGravity?.z
-      if (z == null) return
-      if (!motionActiveRef.current) {
-        motionActiveRef.current = true
-        setMotionActive(true)
-      }
-      const down = z < FACE_DOWN_Z
-      faceDownRef.current = down
-      setFaceDown(down)
-      handleFocusChange(tabVisibleRef.current && down)
-    }
-
     if (hasMotion && !needsPermission) {
-      window.addEventListener('devicemotion', onMotion)
+      window.addEventListener('devicemotion', onMotionEvent)
     }
-    return () => window.removeEventListener('devicemotion', onMotion)
+    return () => window.removeEventListener('devicemotion', onMotionEvent)
   }, [profile])
+
+  function onMotionEvent(e: DeviceMotionEvent) {
+    const z = e.accelerationIncludingGravity?.z
+    if (z == null) return
+    if (!motionActiveRef.current) {
+      motionActiveRef.current = true
+      setMotionActive(true)
+    }
+    const down = z < FACE_DOWN_Z
+    faceDownRef.current = down
+    setFaceDown(down)
+    handleFocusChange(tabVisibleRef.current && down)
+  }
 
   async function requestMotionPermission() {
     try {
@@ -171,22 +174,26 @@ export default function TimerPage() {
       const result = await api.requestPermission?.()
       setMotionPermission(result === 'granted' ? 'granted' : 'denied')
       if (result === 'granted') {
-        window.addEventListener('devicemotion', (e: DeviceMotionEvent) => {
-          const z = e.accelerationIncludingGravity?.z
-          if (z == null) return
-          if (!motionActiveRef.current) {
-            motionActiveRef.current = true
-            setMotionActive(true)
-          }
-          const down = z < FACE_DOWN_Z
-          faceDownRef.current = down
-          setFaceDown(down)
-          handleFocusChange(tabVisibleRef.current && down)
-        })
+        window.addEventListener('devicemotion', onMotionEvent)
       }
     } catch {
       setMotionPermission('denied')
     }
+  }
+
+  // "타이머 시작하기" — 카운트 시작과 센서 권한 요청을 하나의 탭으로 묶는다.
+  // (iOS는 권한 요청이 사용자 탭 안에서 곧바로 호출돼야 하고, 시작 전에는 이탈 감지도 하지 않는다)
+  async function startTimer() {
+    if (motionSupported && motionPermission === 'unknown') {
+      await requestMotionPermission()
+    }
+    slotKeyRef.current = slotKeyAt(new Date())
+    setSlotElapsedSec(0)
+    focusedRef.current = true
+    unfocusedAtRef.current = null
+    unfocusedSlotRef.current = null
+    startedRef.current = true
+    setStarted(true)
   }
 
   const currentSlotKey = slotKeyAt(now)
@@ -203,8 +210,7 @@ export default function TimerPage() {
   )
   const estimatedTotal = Object.values(estimatedNet).reduce((s, v) => s + (v ?? 0), 0)
 
-  const needsMotionPrompt = motionSupported && motionPermission === 'unknown'
-  const usingMotion = motionActive
+  const usingMotion = motionPermission === 'granted' || motionActive
 
   if (loading || (!demoMode && !profile) || loadingLog) return <LoadingScreen />
 
@@ -220,16 +226,6 @@ export default function TimerPage() {
         {awayNotice && (
           <div className="bg-pink-light/60 text-pink-dark text-sm font-bold rounded-2xl px-4 py-3 text-center mb-4">
             ⏸ {awayNotice}
-          </div>
-        )}
-
-        {needsMotionPrompt && (
-          <div className="bg-white/80 rounded-2xl px-4 py-3 mb-4 text-center space-y-2">
-            <p className="text-xs text-gray-500">휴대폰을 뒤집으면 타이머가 켜지도록 하려면 센서 권한이 필요해요.</p>
-            <button onClick={requestMotionPermission}
-              className="px-4 py-2 rounded-2xl font-bold text-white bg-gradient-to-r from-purple-soft to-pink-soft text-xs">
-              센서 권한 허용하기
-            </button>
           </div>
         )}
 
@@ -257,18 +253,37 @@ export default function TimerPage() {
               <p className="text-5xl font-black mb-4" style={{ color: SUBJECT_COLORS[currentSubject] }}>
                 {currentSubject}
               </p>
-              <p className="text-7xl font-black text-purple-dark tabular-nums">
-                {String(Math.floor(slotElapsedSec / 60)).padStart(2, '0')}:{String(slotElapsedSec % 60).padStart(2, '0')}
-              </p>
-              <p className="text-gray-300 text-lg mb-4">/ 30:00</p>
-              <div className="w-full h-2 bg-purple-light/40 rounded-full overflow-hidden mb-6">
-                <div className="h-full bg-gradient-to-r from-purple-soft to-pink-soft transition-all"
-                  style={{ width: `${Math.min(100, (slotElapsedSec / (30 * 60)) * 100)}%` }} />
-              </div>
-              {usingMotion && (
-                <p className={`text-xs font-bold ${faceDown ? 'text-mint-dark' : 'text-pink-dark'}`}>
-                  {faceDown ? '📴 화면이 아래로 향해 있어요 · 집중 중' : '📱 휴대폰을 뒤집어주세요'}
-                </p>
+
+              {!started ? (
+                <>
+                  <button onClick={startTimer}
+                    className="mt-2 px-8 py-4 rounded-3xl font-black text-white text-lg bg-gradient-to-r from-purple-soft to-pink-soft shadow-lg shadow-purple-200/40">
+                    ▶ 타이머 시작하기
+                  </button>
+                  {motionSupported && motionPermission === 'unknown' && (
+                    <p className="text-xs text-gray-400 mt-3">시작하면 휴대폰 뒤집기 감지를 위한 센서 권한을 요청해요</p>
+                  )}
+                </>
+              ) : (
+                <>
+                  {usingMotion && !faceDown && (
+                    <div className="bg-pink-light/70 rounded-2xl px-4 py-3 mb-4">
+                      <p className="text-2xl mb-1">📱</p>
+                      <p className="text-pink-dark font-black text-sm">일시정지됨 · 휴대폰을 뒤집으면 다시 시작돼요</p>
+                    </div>
+                  )}
+                  <p className={`text-7xl font-black tabular-nums ${usingMotion && !faceDown ? 'text-gray-300' : 'text-purple-dark'}`}>
+                    {String(Math.floor(slotElapsedSec / 60)).padStart(2, '0')}:{String(slotElapsedSec % 60).padStart(2, '0')}
+                  </p>
+                  <p className="text-gray-300 text-lg mb-4">/ 30:00</p>
+                  <div className="w-full h-2 bg-purple-light/40 rounded-full overflow-hidden mb-6">
+                    <div className="h-full bg-gradient-to-r from-purple-soft to-pink-soft transition-all"
+                      style={{ width: `${Math.min(100, (slotElapsedSec / (30 * 60)) * 100)}%` }} />
+                  </div>
+                  {usingMotion && faceDown && (
+                    <p className="text-xs font-bold text-mint-dark">📴 화면이 아래로 향해 있어요 · 집중 중</p>
+                  )}
+                </>
               )}
             </div>
           ) : (
