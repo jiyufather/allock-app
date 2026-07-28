@@ -1,7 +1,7 @@
 'use client'
 // 스터디타이머 — 오늘 플래너 시간표 기준으로 지금 시간대 과목을 보여주는 전체화면 집중 모드.
-// 탭 전환 + (모바일) 휴대폰 뒤집기(화면 아래로) 둘 다 감지해서, 둘 중 하나라도
-// 어긋나면 자동으로 "자리비움" 감점을 기록한다.
+// "손에 들고 하기"는 탭 전환 + 휴대폰 뒤집기(화면 아래로) 둘 다, "거치대에 세워놓기"는
+// 탭 전환 + 화면 터치 여부로 감지해서, 어긋나면 자동으로 "자리비움" 감점을 기록한다.
 
 import { useEffect, useRef, useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
@@ -46,6 +46,8 @@ export default function TimerPage() {
   const [faceDown, setFaceDown] = useState(false)
   const [motionActive, setMotionActive] = useState(false) // 실제 센서 데이터를 한 번이라도 받았는지 (PC는 API만 있고 데이터가 안 옴)
   const [started, setStarted] = useState(false) // "타이머 시작하기" 눌러야 카운트 시작 (그 전엔 이탈 감지도 안 함)
+  const [mode, setMode] = useState<'holding' | 'stand' | null>(null)
+  const [touching, setTouching] = useState(false)
 
   const slotKeyRef = useRef<string>(slotKeyAt(new Date()))
   const tabVisibleRef = useRef(true)
@@ -53,6 +55,10 @@ export default function TimerPage() {
   const pendingFaceDownRef = useRef<boolean | null>(null)
   const pendingSinceRef = useRef(0)
   const motionActiveRef = useRef(false)
+  const modeRef = useRef<'holding' | 'stand' | null>(null)
+  useEffect(() => { modeRef.current = mode }, [mode])
+  const touchingRef = useRef(false)
+  const wakeLockRef = useRef<{ release: () => Promise<void> } | null>(null)
   const focusedRef = useRef(true)
   const startedRef = useRef(false)
   const unfocusedAtRef = useRef<number | null>(null)
@@ -136,15 +142,61 @@ export default function TimerPage() {
     return motionActiveRef.current ? faceDownRef.current : true
   }
 
+  // 모드별 "지금 집중 중인지" 판단 — 거치대 모드는 터치 여부, 손에 들고 하기는 뒤집힘 여부
+  function computeFocused() {
+    if (!tabVisibleRef.current) return false
+    if (modeRef.current === 'stand') return !touchingRef.current
+    return effectiveFaceDown()
+  }
+
   // 탭 전환 감지
   useEffect(() => {
     function onVisibility() {
       tabVisibleRef.current = !document.hidden
-      handleFocusChange(tabVisibleRef.current && effectiveFaceDown())
+      handleFocusChange(computeFocused())
+      if (!document.hidden && modeRef.current === 'stand' && startedRef.current) {
+        requestWakeLock()
+      }
     }
     document.addEventListener('visibilitychange', onVisibility)
     return () => document.removeEventListener('visibilitychange', onVisibility)
   }, [profile])
+
+  // 거치대 모드: 화면 터치 감지 — 만지는 동안 일시정지, 손을 떼면 재개
+  useEffect(() => {
+    if (!started || mode !== 'stand') return
+    function onTouchStart() {
+      touchingRef.current = true
+      setTouching(true)
+      handleFocusChange(computeFocused())
+    }
+    function onTouchEnd() {
+      touchingRef.current = false
+      setTouching(false)
+      handleFocusChange(computeFocused())
+    }
+    window.addEventListener('pointerdown', onTouchStart)
+    window.addEventListener('pointerup', onTouchEnd)
+    window.addEventListener('pointercancel', onTouchEnd)
+    return () => {
+      window.removeEventListener('pointerdown', onTouchStart)
+      window.removeEventListener('pointerup', onTouchEnd)
+      window.removeEventListener('pointercancel', onTouchEnd)
+    }
+  }, [started, mode])
+
+  async function requestWakeLock() {
+    try {
+      const nav = navigator as Navigator & { wakeLock?: { request: (type: 'screen') => Promise<{ release: () => Promise<void> }> } }
+      wakeLockRef.current = (await nav.wakeLock?.request('screen')) ?? null
+    } catch {
+      wakeLockRef.current = null
+    }
+  }
+
+  useEffect(() => {
+    return () => { wakeLockRef.current?.release?.().catch(() => {}) }
+  }, [])
 
   // 뒤집기(화면 아래) 감지 — 실제 센서 데이터가 들어오는 기기에서만 동작.
   // PC 등 센서가 없는 환경은 API 존재 여부와 무관하게 데이터가 안 오므로 자동으로 무시됨.
@@ -161,6 +213,7 @@ export default function TimerPage() {
   }, [profile])
 
   function onMotionEvent(e: DeviceMotionEvent) {
+    if (modeRef.current === 'stand') return // 거치대 모드는 뒤집힘 감지를 쓰지 않음
     const z = e.accelerationIncludingGravity?.z
     if (z == null) return
     if (!motionActiveRef.current) {
@@ -189,7 +242,7 @@ export default function TimerPage() {
     pendingFaceDownRef.current = null
     faceDownRef.current = rawDown
     setFaceDown(rawDown)
-    handleFocusChange(tabVisibleRef.current && rawDown)
+    handleFocusChange(computeFocused())
   }
 
   async function requestMotionPermission() {
@@ -205,15 +258,22 @@ export default function TimerPage() {
     }
   }
 
-  // "타이머 시작하기" — 카운트 시작과 센서 권한 요청을 하나의 탭으로 묶는다.
+  // "타이머 시작하기" — 카운트 시작과 센서 권한/화면 잠금 방지 요청을 하나의 탭으로 묶는다.
   // (iOS는 권한 요청이 사용자 탭 안에서 곧바로 호출돼야 하고, 시작 전에는 이탈 감지도 하지 않는다)
-  async function startTimer() {
-    if (motionSupported && motionPermission === 'unknown') {
+  async function startTimer(chosenMode: 'holding' | 'stand') {
+    setMode(chosenMode)
+    modeRef.current = chosenMode
+    if (chosenMode === 'holding' && motionSupported && motionPermission === 'unknown') {
       await requestMotionPermission()
+    }
+    if (chosenMode === 'stand') {
+      await requestWakeLock()
     }
     slotKeyRef.current = slotKeyAt(new Date())
     setSlotElapsedSec(0)
     focusedRef.current = true
+    touchingRef.current = false
+    setTouching(false)
     unfocusedAtRef.current = null
     unfocusedSlotRef.current = null
     startedRef.current = true
@@ -280,12 +340,39 @@ export default function TimerPage() {
 
               {!started ? (
                 <>
-                  <button onClick={startTimer}
-                    className="mt-2 px-8 py-4 rounded-3xl font-black text-white text-lg bg-gradient-to-r from-purple-soft to-pink-soft shadow-lg shadow-purple-200/40">
-                    ▶ 타이머 시작하기
-                  </button>
+                  <p className="text-xs text-gray-400 mb-3">공부 방식을 선택하고 시작해주세요</p>
+                  <div className="flex gap-3 justify-center">
+                    <button onClick={() => startTimer('holding')}
+                      className="px-5 py-4 rounded-3xl font-black text-white text-sm leading-tight bg-gradient-to-r from-purple-soft to-pink-soft shadow-lg shadow-purple-200/40">
+                      📱<br />손에 들고 하기
+                    </button>
+                    <button onClick={() => startTimer('stand')}
+                      className="px-5 py-4 rounded-3xl font-black text-white text-sm leading-tight bg-gradient-to-r from-purple-soft to-pink-soft shadow-lg shadow-purple-200/40">
+                      🖥️<br />거치대에 세워놓기
+                    </button>
+                  </div>
                   {motionSupported && motionPermission === 'unknown' && (
-                    <p className="text-xs text-gray-400 mt-3">시작하면 휴대폰 뒤집기 감지를 위한 센서 권한을 요청해요</p>
+                    <p className="text-xs text-gray-400 mt-3">손에 들고 하기를 선택하면 휴대폰 뒤집기 감지를 위한 센서 권한을 요청해요</p>
+                  )}
+                </>
+              ) : mode === 'stand' ? (
+                <>
+                  {touching && (
+                    <div className="bg-pink-light/70 rounded-2xl px-4 py-3 mb-4">
+                      <p className="text-2xl mb-1">✋</p>
+                      <p className="text-pink-dark font-black text-sm">일시정지됨 · 화면에서 손을 떼면 다시 시작돼요</p>
+                    </div>
+                  )}
+                  <p className={`text-7xl font-black tabular-nums ${touching ? 'text-gray-300' : 'text-purple-dark'}`}>
+                    {String(Math.floor(slotElapsedSec / 60)).padStart(2, '0')}:{String(slotElapsedSec % 60).padStart(2, '0')}
+                  </p>
+                  <p className="text-gray-300 text-lg mb-4">/ 30:00</p>
+                  <div className="w-full h-2 bg-purple-light/40 rounded-full overflow-hidden mb-6">
+                    <div className="h-full bg-gradient-to-r from-purple-soft to-pink-soft transition-all"
+                      style={{ width: `${Math.min(100, (slotElapsedSec / (30 * 60)) * 100)}%` }} />
+                  </div>
+                  {!touching && (
+                    <p className="text-xs font-bold text-mint-dark">🖥️ 거치대 모드 · 화면을 만지지 않으면 집중 중</p>
                   )}
                 </>
               ) : (
@@ -326,7 +413,11 @@ export default function TimerPage() {
         {log && log.status === 'planned' && slots.length > 0 && (
           <div className="space-y-3">
             <div className="bg-purple-light/20 rounded-2xl px-4 py-3 text-xs text-gray-500 text-center">
-              탭을 벗어나거나{usingMotion ? ' 휴대폰을 뒤집지 않으면' : ''} {AWAY_THRESHOLD_SEC}초 이상부터 자동으로 자리비움이 기록돼요.
+              탭을 벗어나거나{
+                mode === 'stand' ? ' 화면을 만지면'
+                : usingMotion ? ' 휴대폰을 뒤집지 않으면'
+                : ''
+              } {AWAY_THRESHOLD_SEC}초 이상부터 자동으로 자리비움이 기록돼요.
             </div>
             <div className="bg-white/80 rounded-3xl p-4 shadow-lg shadow-purple-100/20 border border-purple-50 space-y-2">
               <div className="flex items-center justify-between">
