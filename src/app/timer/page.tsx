@@ -13,7 +13,10 @@ import { toDateStr, formatMinutes } from '@/lib/config'
 import LoadingScreen from '@/components/LoadingScreen'
 
 const AWAY_THRESHOLD_SEC = 30 // 이보다 짧은 이탈은 무시 (노이즈 방지)
-const FACE_DOWN_Z = -6 // accelerationIncludingGravity.z 가 이보다 낮으면 "화면이 아래" 로 판단
+// 뒤집힘 판정에 여유 구간(히스테리시스)을 둬서 z값이 문턱 근처에서 흔들릴 때 깜빡이지 않도록 함
+const FACE_DOWN_ENTER_Z = -7 // 이보다 낮아야 "뒤집힘"으로 새로 판정
+const FACE_DOWN_EXIT_Z = -3 // 이보다 높아야 "안 뒤집힘"으로 복귀 (그 사이는 이전 상태 유지)
+const FACE_DOWN_DEBOUNCE_MS = 500 // 판정이 바뀐 뒤에도 이 시간 이상 유지돼야 실제로 반영
 
 type MotionPermissionAPI = { requestPermission?: () => Promise<'granted' | 'denied'> }
 
@@ -47,6 +50,8 @@ export default function TimerPage() {
   const slotKeyRef = useRef<string>(slotKeyAt(new Date()))
   const tabVisibleRef = useRef(true)
   const faceDownRef = useRef(false)
+  const pendingFaceDownRef = useRef<boolean | null>(null)
+  const pendingSinceRef = useRef(0)
   const motionActiveRef = useRef(false)
   const focusedRef = useRef(true)
   const startedRef = useRef(false)
@@ -162,10 +167,29 @@ export default function TimerPage() {
       motionActiveRef.current = true
       setMotionActive(true)
     }
-    const down = z < FACE_DOWN_Z
-    faceDownRef.current = down
-    setFaceDown(down)
-    handleFocusChange(tabVisibleRef.current && down)
+
+    // 문턱값 사이(dead zone)에서는 직전 확정 상태를 그대로 유지
+    let rawDown = faceDownRef.current
+    if (z < FACE_DOWN_ENTER_Z) rawDown = true
+    else if (z > FACE_DOWN_EXIT_Z) rawDown = false
+
+    if (rawDown === faceDownRef.current) {
+      pendingFaceDownRef.current = null
+      return
+    }
+
+    const now = Date.now()
+    if (pendingFaceDownRef.current !== rawDown) {
+      pendingFaceDownRef.current = rawDown
+      pendingSinceRef.current = now
+      return
+    }
+    if (now - pendingSinceRef.current < FACE_DOWN_DEBOUNCE_MS) return
+
+    pendingFaceDownRef.current = null
+    faceDownRef.current = rawDown
+    setFaceDown(rawDown)
+    handleFocusChange(tabVisibleRef.current && rawDown)
   }
 
   async function requestMotionPermission() {
