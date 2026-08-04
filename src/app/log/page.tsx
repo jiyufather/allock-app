@@ -218,7 +218,7 @@ export default function LogPage() {
     if (!profile || !isValid || !hasAnyPlan) return
     setSaving(true)
     try {
-      await submitStudyPlan(profile.uid, profile.name, profile.school, date, buildPlan(entries, timetable), buildScheduleSlots(entries, timetable), mood, resolution.trim())
+      await submitStudyPlan(profile.uid, profile.name, profile.school, date, buildPlan(entries, timetable), buildScheduleSlots(entries, timetable), mood, resolution.trim(), profile.summerStart)
       setSaved(true)
       setEditMode(false)
     } finally {

@@ -114,6 +114,7 @@ export async function submitStudyPlan(
   scheduleSlots: Partial<Record<string, Subject>>,
   mood?: string,
   resolution?: string,
+  summerStart?: string,
 ) {
   if (DEMO_MODE) return
   const logId = `${userId}_${date}`
@@ -124,7 +125,7 @@ export async function submitStudyPlan(
     userName,
     userSchool,
     date,
-    week: getWeekFromDate(date),
+    week: getWeekFromDate(date, { summerStart }),
     plan,
     scheduleSlots,
     deductions: [],
